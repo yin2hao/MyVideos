@@ -8,6 +8,7 @@ import com.yin2hao.myvideos.network.WebDAVClient
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 
@@ -68,7 +69,7 @@ class LocalProxyServer(
     
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
-        Log.d(TAG, "Request: $uri")
+        Log.d(TAG, "Request: $uri, headers: ${session.headers}")
         
         // 解析请求路径 /video/{videoId}
         val pathParts = uri.split("/").filter { it.isNotEmpty() }
@@ -80,14 +81,17 @@ class LocalProxyServer(
         val metadata = metadataCache[videoId]
             ?: return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Video not found")
         
-        // 解析Range头
-        val rangeHeader = session.headers["range"]
+        // 解析Range头（NanoHTTPD会将Range头转换为小写）
+        val rangeHeader = session.headers["range"] ?: session.headers["Range"]
+        Log.d(TAG, "Range header: $rangeHeader")
+        
         val totalSize = metadata.originalFileSize
         
         return if (rangeHeader != null) {
             handleRangeRequest(videoId, metadata, rangeHeader, totalSize)
         } else {
             // 没有Range头，返回整个视频（但实际上ExoPlayer会使用Range请求）
+            Log.d(TAG, "No range header, returning full request response")
             handleFullRequest(videoId, metadata, totalSize)
         }
     }
@@ -111,26 +115,31 @@ class LocalProxyServer(
                 minOf(start + metadata.chunkSize - 1, totalSize - 1)
             }
             
-            val requestedLength = end - start + 1
+            // 确保范围不超过总大小
+            val validEnd = minOf(end, totalSize - 1)
             
-            Log.d(TAG, "Range request: $start-$end (length: $requestedLength)")
+            Log.d(TAG, "Range request: bytes=$start-$validEnd (total=$totalSize)")
             
             // 获取数据
-            val data = getVideoData(videoId, metadata, start, end)
+            val data = getVideoData(videoId, metadata, start, validEnd)
             
-            if (data != null) {
-                val inputStream = ByteArrayInputStream(data)
+            if (data != null && data.isNotEmpty()) {
+                val actualEnd = start + data.size - 1
+                Log.d(TAG, "Returning: ${data.size} bytes, Content-Range: bytes $start-$actualEnd/$totalSize")
+                
                 val response = newFixedLengthResponse(
                     Response.Status.PARTIAL_CONTENT,
                     metadata.mimeType,
-                    inputStream,
+                    ByteArrayInputStream(data),
                     data.size.toLong()
                 )
-                response.addHeader("Content-Range", "bytes $start-${start + data.size - 1}/$totalSize")
+                response.addHeader("Content-Range", "bytes $start-$actualEnd/$totalSize")
                 response.addHeader("Accept-Ranges", "bytes")
-                response.addHeader("Content-Length", data.size.toString())
+                response.addHeader("Content-Type", metadata.mimeType)
+                response.addHeader("Connection", "close")
                 return response
             } else {
+                Log.e(TAG, "No data returned for range $start-$validEnd")
                 return newFixedLengthResponse(
                     Response.Status.INTERNAL_ERROR,
                     MIME_PLAINTEXT,
@@ -139,6 +148,7 @@ class LocalProxyServer(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error handling range request", e)
+            e.printStackTrace()
             return newFixedLengthResponse(
                 Response.Status.INTERNAL_ERROR,
                 MIME_PLAINTEXT,
@@ -152,16 +162,44 @@ class LocalProxyServer(
         metadata: VideoMetadata,
         totalSize: Long
     ): Response {
-        // 返回一个响应，告诉客户端支持Range请求
-        val response = newFixedLengthResponse(
-            Response.Status.OK,
-            metadata.mimeType,
-            null as InputStream?,
-            totalSize
-        )
-        response.addHeader("Accept-Ranges", "bytes")
-        response.addHeader("Content-Length", totalSize.toString())
-        return response
+        // 没有 Range 请求时，获取第一个分块的数据
+        // 这样可以让 ExoPlayer 知道服务器工作正常，然后会发送 Range 请求
+        Log.d(TAG, "Serving initial chunk without range request")
+        
+        try {
+            // 返回第一个分块的数据
+            val firstChunkSize = minOf(metadata.chunkSize.toLong(), totalSize)
+            val data = getVideoData(videoId, metadata, 0, firstChunkSize - 1)
+            
+            if (data != null && data.isNotEmpty()) {
+                Log.d(TAG, "Returning initial ${data.size} bytes with Accept-Ranges header")
+                val response = newFixedLengthResponse(
+                    Response.Status.OK,
+                    metadata.mimeType,
+                    ByteArrayInputStream(data),
+                    data.size.toLong()
+                )
+                response.addHeader("Accept-Ranges", "bytes")
+                response.addHeader("Content-Type", metadata.mimeType)
+                // 不要设置完整的 Content-Length，这样 ExoPlayer 会发送 Range 请求
+                return response
+            } else {
+                Log.e(TAG, "Failed to get initial data")
+                return newFixedLengthResponse(
+                    Response.Status.INTERNAL_ERROR,
+                    MIME_PLAINTEXT,
+                    "Failed to fetch video data"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in handleFullRequest", e)
+            e.printStackTrace()
+            return newFixedLengthResponse(
+                Response.Status.INTERNAL_ERROR,
+                MIME_PLAINTEXT,
+                "Error: ${e.message}"
+            )
+        }
     }
     
     /**
@@ -175,16 +213,22 @@ class LocalProxyServer(
     ): ByteArray? = runBlocking {
         try {
             val chunkSize = metadata.chunkSize.toLong()
+            val requestedLength = end - start + 1
             
             // 计算需要哪些分块
             val startChunkIndex = (start / chunkSize).toInt()
             val endChunkIndex = (end / chunkSize).toInt()
             
+            Log.d(TAG, "getVideoData: range=$start-$end, length=$requestedLength, chunks=$startChunkIndex-$endChunkIndex")
+            
             // 收集所有需要的数据
-            val resultBuffer = mutableListOf<Byte>()
+            val resultBuffer = ByteArrayOutputStream(requestedLength.toInt())
             
             for (chunkIndex in startChunkIndex..endChunkIndex) {
-                if (chunkIndex >= metadata.chunks.size) break
+                if (chunkIndex >= metadata.chunks.size) {
+                    Log.w(TAG, "Chunk index $chunkIndex exceeds metadata chunks size ${metadata.chunks.size}")
+                    break
+                }
                 
                 val chunkInfo = metadata.chunks[chunkIndex]
                 val chunkKey = "$videoId-$chunkIndex"
@@ -193,7 +237,7 @@ class LocalProxyServer(
                 val decryptedChunk = chunkCache[chunkKey] ?: run {
                     // 从WebDAV下载
                     val remotePath = "${settings.remoteBasePath}$videoId/${chunkInfo.filename}"
-                    Log.d(TAG, "Downloading chunk: $remotePath")
+                    Log.d(TAG, "Downloading chunk $chunkIndex: $remotePath")
                     
                     val encryptedData = webdavClient.downloadFile(remotePath).getOrNull()
                     if (encryptedData == null) {
@@ -201,8 +245,11 @@ class LocalProxyServer(
                         return@runBlocking null
                     }
                     
+                    Log.d(TAG, "Downloaded chunk $chunkIndex: ${encryptedData.size} bytes (encrypted)")
+                    
                     // 解密
                     val decrypted = CryptoManager.decryptChunk(encryptedData, metadata.encryptionKey)
+                    Log.d(TAG, "Decrypted chunk $chunkIndex: ${decrypted.size} bytes")
                     
                     // 缓存（简单的LRU策略）
                     if (chunkCache.size >= maxCacheSize) {
@@ -232,17 +279,27 @@ class LocalProxyServer(
                     decryptedChunk.size - 1
                 }
                 
+                Log.d(TAG, "Chunk $chunkIndex: extracting bytes $dataStart-$dataEnd from ${decryptedChunk.size} byte chunk")
+                
                 // 添加数据
                 for (i in dataStart..dataEnd) {
                     if (i < decryptedChunk.size) {
-                        resultBuffer.add(decryptedChunk[i])
+                        resultBuffer.write(decryptedChunk[i].toInt())
                     }
                 }
             }
             
-            resultBuffer.toByteArray()
+            val result = resultBuffer.toByteArray()
+            Log.d(TAG, "getVideoData result: ${result.size} bytes (requested: $requestedLength)")
+            
+            if (result.size != requestedLength.toInt()) {
+                Log.w(TAG, "WARNING: Returned data size ${result.size} != requested size $requestedLength")
+            }
+            
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Error getting video data", e)
+            e.printStackTrace()
             null
         }
     }
