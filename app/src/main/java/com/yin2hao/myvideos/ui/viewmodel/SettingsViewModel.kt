@@ -59,6 +59,10 @@ class SettingsViewModel(
     fun updateRemoteBasePath(path: String) {
         _settings.value = _settings.value.copy(remoteBasePath = path)
     }
+
+    fun updateDynamicColor(enabled: Boolean) {
+        _settings.value = _settings.value.copy(dynamicColor = enabled)
+    }
     
     fun testConnection() {
         viewModelScope.launch {

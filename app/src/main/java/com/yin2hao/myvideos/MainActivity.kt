@@ -18,6 +18,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.yin2hao.myvideos.data.model.Settings
+import com.yin2hao.myvideos.data.repository.SettingsRepository
 import com.yin2hao.myvideos.data.model.VideoItem
 import com.yin2hao.myvideos.ui.screens.PlayerScreen
 import com.yin2hao.myvideos.ui.screens.SettingsScreen
@@ -28,9 +30,11 @@ import com.yin2hao.myvideos.ui.theme.MyVideosTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val settingsRepository = SettingsRepository(this)
         enableEdgeToEdge()
         setContent {
-            MyVideosTheme {
+            val settings by settingsRepository.settingsFlow.collectAsState(initial = Settings())
+            MyVideosTheme(dynamicColor = settings.dynamicColor) {
                 MyVideosApp()
             }
         }

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.gson.Gson
 import com.yin2hao.myvideos.data.model.Settings
@@ -28,6 +29,7 @@ class SettingsRepository(private val context: Context) {
         private val MASTER_PASSWORD = stringPreferencesKey("master_password")
         private val CHUNK_SIZE_MB = intPreferencesKey("chunk_size_mb")
         private val REMOTE_BASE_PATH = stringPreferencesKey("remote_base_path")
+        private val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
     }
     
     val settingsFlow: Flow<Settings> = context.dataStore.data.map { preferences ->
@@ -37,7 +39,8 @@ class SettingsRepository(private val context: Context) {
             webdavPassword = preferences[WEBDAV_PASSWORD] ?: "",
             masterPassword = preferences[MASTER_PASSWORD] ?: "",
             chunkSizeMB = preferences[CHUNK_SIZE_MB] ?: 5,
-            remoteBasePath = preferences[REMOTE_BASE_PATH] ?: "/MyVideos/"
+            remoteBasePath = preferences[REMOTE_BASE_PATH] ?: "/MyVideos/",
+            dynamicColor = preferences[DYNAMIC_COLOR] ?: true
         )
     }
     
@@ -49,6 +52,7 @@ class SettingsRepository(private val context: Context) {
             preferences[MASTER_PASSWORD] = settings.masterPassword
             preferences[CHUNK_SIZE_MB] = settings.chunkSizeMB
             preferences[REMOTE_BASE_PATH] = settings.remoteBasePath
+            preferences[DYNAMIC_COLOR] = settings.dynamicColor
         }
     }
     

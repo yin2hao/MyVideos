@@ -22,7 +22,10 @@ data class Settings(
     val chunkSizeMB: Int = 5, // 默认5MB
     
     @SerializedName("remote_base_path")
-    val remoteBasePath: String = "/MyVideos/"
+    val remoteBasePath: String = "/MyVideos/",
+
+    @SerializedName("dynamic_color")
+    val dynamicColor: Boolean = true
 ) {
     fun isValid(): Boolean {
         return webdavUrl.isNotBlank() && 
