@@ -80,7 +80,8 @@ class VideoRepository(
                     metadata = null, // 播放时再加载完整元数据
                     hasCover = entry.hasCover,
                     originalFileSize = entry.originalFileSize,
-                    createdAt = entry.createdAt
+                    createdAt = entry.createdAt,
+                    isStream = entry.isStream
                 )
             }
             

@@ -1,5 +1,7 @@
 package com.yin2hao.myvideos.data.model
 
+import com.yin2hao.myvideos.data.StreamVideoMetadata
+
 /**
  * 视频列表项 - 用于UI显示
  */
@@ -11,9 +13,11 @@ data class VideoItem(
     val coverUrl: String?,   // 本地缓存路径或null
     val remotePath: String,  // WebDAV上的路径
     val metadata: VideoMetadata? = null,
+    val streamMetadata: StreamVideoMetadata? = null,  // 流式加密元数据
     val hasCover: Boolean = false,
     val originalFileSize: Long = 0,
-    val createdAt: Long = 0
+    val createdAt: Long = 0,
+    val isStream: Boolean = false  // true=流式加密(CTR), false=分块加密(GCM)
 ) {
     fun getDurationFormatted(): String {
         val totalSeconds = durationMs / 1000

@@ -31,7 +31,7 @@ data class VideoIndex(
 ) {
     companion object {
         private const val MAGIC_NUMBER = 0x4D564958 // "MVIX"
-        private const val VERSION = 1
+        private const val VERSION = 2  // V2: 添加isStream字段
         
         fun fromBytes(data: ByteArray): VideoIndex {
             val input = DataInputStream(ByteArrayInputStream(data))
@@ -42,7 +42,7 @@ data class VideoIndex(
             }
             
             val version = input.readInt()
-            if (version != VERSION) {
+            if (version !in 1..VERSION) {
                 throw IllegalArgumentException("Unsupported version: $version")
             }
             
@@ -58,6 +58,8 @@ data class VideoIndex(
                 val createdAt = input.readLong()
                 val hasCover = input.readByte() == 1.toByte()
                 val mimeType = readString(input)
+                // V2新增：isStream字段，V1默认为false（分块模式）
+                val isStream = if (version >= 2) input.readByte() == 1.toByte() else false
                 
                 videos.add(VideoIndexEntry(
                     videoId = videoId,
@@ -67,7 +69,8 @@ data class VideoIndex(
                     originalFileSize = originalFileSize,
                     createdAt = createdAt,
                     hasCover = hasCover,
-                    mimeType = mimeType
+                    mimeType = mimeType,
+                    isStream = isStream
                 ))
             }
             
@@ -101,6 +104,7 @@ data class VideoIndex(
             dataOutput.writeLong(entry.createdAt)
             dataOutput.writeByte(if (entry.hasCover) 1 else 0)
             writeString(dataOutput, entry.mimeType)
+            dataOutput.writeByte(if (entry.isStream) 1 else 0)  // V2新增
         }
         
         dataOutput.flush()
@@ -151,7 +155,8 @@ data class VideoIndexEntry(
     val originalFileSize: Long,
     val createdAt: Long,
     val hasCover: Boolean,
-    val mimeType: String
+    val mimeType: String,
+    val isStream: Boolean = false  // true=流式加密(CTR), false=分块加密(GCM)
 ) {
     fun getDurationFormatted(): String {
         val totalSeconds = durationMs / 1000

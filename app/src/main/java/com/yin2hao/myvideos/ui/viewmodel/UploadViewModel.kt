@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.yin2hao.myvideos.data.model.Settings
 import com.yin2hao.myvideos.data.model.UploadState
 import com.yin2hao.myvideos.data.repository.SettingsRepository
+import com.yin2hao.myvideos.network.WebDAVClient
+import com.yin2hao.myvideos.video.StreamVideoUploadManager
 import com.yin2hao.myvideos.video.VideoInfo
 import com.yin2hao.myvideos.video.VideoMetadataExtractor
 import com.yin2hao.myvideos.video.VideoUploadManager
@@ -15,6 +17,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+/**
+ * 上传模式
+ */
+enum class UploadMode {
+    CHUNKED,  // 分块加密 (AES-GCM)
+    STREAM    // 流式加密 (AES-CTR)
+}
 
 class UploadViewModel(
     private val context: Context,
@@ -40,6 +50,9 @@ class UploadViewModel(
     
     private val _settingsValid = MutableStateFlow(false)
     val settingsValid: StateFlow<Boolean> = _settingsValid
+    
+    private val _uploadMode = MutableStateFlow(UploadMode.STREAM)  // 默认使用流式加密
+    val uploadMode: StateFlow<UploadMode> = _uploadMode
     
     private var currentSettings: Settings = Settings()
     
@@ -74,6 +87,10 @@ class UploadViewModel(
         _description.value = description
     }
     
+    fun setUploadMode(mode: UploadMode) {
+        _uploadMode.value = mode
+    }
+    
     suspend fun startUpload() {
         val uri = _selectedVideoUri.value ?: return
         val videoTitle = _title.value.takeIf { it.isNotBlank() } ?: return
@@ -85,6 +102,13 @@ class UploadViewModel(
             return
         }
         
+        when (_uploadMode.value) {
+            UploadMode.CHUNKED -> startChunkedUpload(uri, videoTitle, settings)
+            UploadMode.STREAM -> startStreamUpload(uri, videoTitle, settings)
+        }
+    }
+    
+    private suspend fun startChunkedUpload(uri: Uri, videoTitle: String, settings: Settings) {
         val uploadManager = VideoUploadManager(context, settings)
         
         // 监听上传状态
@@ -104,6 +128,49 @@ class UploadViewModel(
         if (videoId != null) {
             _uploadState.value = UploadState.Success
         }
+    }
+    
+    private suspend fun startStreamUpload(uri: Uri, videoTitle: String, settings: Settings) {
+        val webDavClient = WebDAVClient(settings)
+        val uploadManager = StreamVideoUploadManager(webDavClient, context.contentResolver)
+        
+        // 监听上传进度
+        viewModelScope.launch {
+            uploadManager.uploadProgress.collect { progress ->
+                if (progress != null) {
+                    _uploadState.value = UploadState.Uploading(
+                        progress = progress.progress,
+                        currentChunk = 0,
+                        totalChunks = 1
+                    )
+                }
+            }
+        }
+        
+        // 开始上传
+        val result = uploadManager.uploadVideo(
+            videoUri = uri,
+            title = videoTitle,
+            description = _description.value,
+            masterPassword = settings.masterPassword,
+            basePath = settings.remoteBasePath,
+            onExtractCover = { videoUri ->
+                try {
+                    metadataExtractor.extractCover(videoUri)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+        )
+        
+        result.fold(
+            onSuccess = {
+                _uploadState.value = UploadState.Success
+            },
+            onFailure = { e ->
+                _uploadState.value = UploadState.Error(e.message ?: "上传失败")
+            }
+        )
     }
     
     fun reset() {
