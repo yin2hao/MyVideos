@@ -187,7 +187,13 @@ fun VideosScreen(
                         items(videos, key = { it.videoId }) { video ->
                             VideoCard(
                                 video = video,
-                                onClick = { onVideoClick(video) }
+                                onClick = { onVideoClick(video) },
+                                onVisible = { 
+                                    // 当卡片可见时，如果没有封面则触发加载
+                                    if (video.coverUrl == null && video.hasCover) {
+                                        viewModel.loadCoverFor(video.videoId)
+                                    }
+                                }
                             )
                         }
                     }
@@ -200,8 +206,14 @@ fun VideosScreen(
 @Composable
 private fun VideoCard(
     video: VideoItem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onVisible: () -> Unit = {}
 ) {
+    // 当组件首次进入组合时触发
+    LaunchedEffect(video.videoId) {
+        onVisible()
+    }
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -226,7 +238,19 @@ private fun VideoCard(
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
+                } else if (video.hasCover) {
+                    // 有封面但正在加载
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
                 } else {
+                    // 没有封面
                     Box(
                         modifier = Modifier
                             .fillMaxSize()

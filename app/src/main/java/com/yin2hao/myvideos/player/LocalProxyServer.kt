@@ -235,8 +235,9 @@ class LocalProxyServer(
                 
                 // 获取分块数据（优先从缓存）
                 val decryptedChunk = chunkCache[chunkKey] ?: run {
-                    // 从WebDAV下载
-                    val remotePath = "${settings.remoteBasePath}$videoId/${chunkInfo.filename}"
+                    // 从WebDAV下载 - 新的目录结构: /MyVideos/videos/{videoId}/chunk_xxxx.enc
+                    val basePath = settings.remoteBasePath.trimEnd('/') + "/"
+                    val remotePath = "${basePath}videos/$videoId/${chunkInfo.filename}"
                     Log.d(TAG, "Downloading chunk $chunkIndex: $remotePath")
                     
                     val encryptedData = webdavClient.downloadFile(remotePath).getOrNull()

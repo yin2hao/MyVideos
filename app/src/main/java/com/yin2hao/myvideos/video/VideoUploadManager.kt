@@ -6,6 +6,8 @@ import com.yin2hao.myvideos.crypto.CryptoManager
 import com.yin2hao.myvideos.data.model.ChunkInfo
 import com.yin2hao.myvideos.data.model.Settings
 import com.yin2hao.myvideos.data.model.UploadState
+import com.yin2hao.myvideos.data.model.VideoIndex
+import com.yin2hao.myvideos.data.model.VideoIndexEntry
 import com.yin2hao.myvideos.data.model.VideoMetadata
 import com.yin2hao.myvideos.network.WebDAVClient
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +18,16 @@ import java.util.UUID
 
 /**
  * 视频上传管理器
+ * 
+ * 新的目录结构：
+ * /MyVideos/
+ *   ├── index.bin           ← 加密的总索引
+ *   ├── covers/
+ *   │   └── {video_id}.enc  ← 封面单独存放
+ *   └── videos/
+ *       └── {video_id}/
+ *           ├── meta.bin    ← 完整元数据
+ *           └── chunk_xxxx.enc
  */
 class VideoUploadManager(
     private val context: Context,
@@ -27,6 +39,12 @@ class VideoUploadManager(
     
     private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
     val uploadState: StateFlow<UploadState> = _uploadState
+    
+    // 路径常量
+    private val basePath get() = settings.remoteBasePath.trimEnd('/') + "/"
+    private val indexPath get() = "${basePath}index.bin"
+    private val coversPath get() = "${basePath}covers/"
+    private val videosPath get() = "${basePath}videos/"
     
     /**
      * 上传视频
@@ -45,11 +63,13 @@ class VideoUploadManager(
             
             // 生成视频ID
             val videoId = UUID.randomUUID().toString()
-            val remotePath = "${settings.remoteBasePath}$videoId/"
+            val videoPath = "${videosPath}$videoId/"
             
-            // 创建远程目录
-            webdavClient.createDirectory(settings.remoteBasePath).getOrThrow()
-            webdavClient.createDirectory(remotePath).getOrThrow()
+            // 创建远程目录结构
+            webdavClient.createDirectory(basePath).getOrThrow()
+            webdavClient.createDirectory(coversPath).getOrThrow()
+            webdavClient.createDirectory(videosPath).getOrThrow()
+            webdavClient.createDirectory(videoPath).getOrThrow()
             
             // 提取视频信息
             val videoInfo = metadataExtractor.extractMetadata(videoUri)
@@ -62,12 +82,8 @@ class VideoUploadManager(
             
             // 分块并加密上传视频
             val chunkInfos = mutableListOf<ChunkInfo>()
-            var totalChunks = 0
-            
-            // 计算总块数
             val chunkSize = settings.getChunkSizeBytes()
-            totalChunks = ((videoInfo.fileSize + chunkSize - 1) / chunkSize).toInt()
-            
+            val totalChunks = ((videoInfo.fileSize + chunkSize - 1) / chunkSize).toInt()
             var currentChunk = 0
             
             chunker.chunkVideo(videoUri, chunkSize, object : VideoChunker.ChunkCallback {
@@ -89,7 +105,7 @@ class VideoUploadManager(
                     
                     // 上传分块
                     val chunkFilename = "chunk_${String.format("%04d", chunk.index)}.enc"
-                    val chunkPath = "$remotePath$chunkFilename"
+                    val chunkPath = "$videoPath$chunkFilename"
                     
                     webdavClient.uploadFile(chunkPath, encryptedData).getOrThrow()
                     
@@ -108,16 +124,20 @@ class VideoUploadManager(
                 }
             })
             
-            // 提取并加密上传封面
+            // 提取并加密上传封面到 covers 目录
             _uploadState.value = UploadState.UploadingCover
             val coverData = metadataExtractor.extractCover(videoUri)
-            if (coverData != null) {
+            val hasCover = if (coverData != null) {
                 val encryptedCover = CryptoManager.encrypt(coverData, coverKey, coverIv)
-                webdavClient.uploadFile("${remotePath}cover.enc", encryptedCover).getOrThrow()
+                webdavClient.uploadFile("$coversPath$videoId.enc", encryptedCover).getOrThrow()
+                true
+            } else {
+                false
             }
             
-            // 创建并加密上传元数据
+            // 创建并加密上传元数据到 videos/{videoId}/ 目录
             _uploadState.value = UploadState.UploadingMetadata
+            val createdAt = System.currentTimeMillis()
             val metadata = VideoMetadata(
                 videoId = videoId,
                 title = title,
@@ -130,7 +150,7 @@ class VideoUploadManager(
                 iv = videoIv,
                 coverEncryptionKey = coverKey,
                 coverIv = coverIv,
-                createdAt = System.currentTimeMillis(),
+                createdAt = createdAt,
                 mimeType = videoInfo.mimeType,
                 chunks = chunkInfos.sortedBy { it.index }
             )
@@ -147,7 +167,19 @@ class VideoUploadManager(
             System.arraycopy(ivBytes, 0, finalMetadata, 0, ivBytes.size)
             System.arraycopy(encryptedMetadata, 0, finalMetadata, ivBytes.size, encryptedMetadata.size)
             
-            webdavClient.uploadFile("${remotePath}meta.bin", finalMetadata).getOrThrow()
+            webdavClient.uploadFile("${videoPath}meta.bin", finalMetadata).getOrThrow()
+            
+            // 更新总索引文件
+            updateIndex(VideoIndexEntry(
+                videoId = videoId,
+                title = title,
+                description = description,
+                durationMs = videoInfo.duration,
+                originalFileSize = videoInfo.fileSize,
+                createdAt = createdAt,
+                hasCover = hasCover,
+                mimeType = videoInfo.mimeType
+            ))
             
             _uploadState.value = UploadState.Success
             videoId
@@ -157,6 +189,44 @@ class VideoUploadManager(
             _uploadState.value = UploadState.Error(e.message ?: "上传失败")
             null
         }
+    }
+    
+    /**
+     * 更新总索引文件
+     */
+    private suspend fun updateIndex(newEntry: VideoIndexEntry) {
+        val masterKey = CryptoManager.deriveKeyFromPassword(settings.masterPassword)
+        
+        // 尝试加载现有索引
+        val currentIndex = try {
+            val encryptedIndex = webdavClient.downloadFile(indexPath).getOrNull()
+            if (encryptedIndex != null && encryptedIndex.size > 12) {
+                val iv = encryptedIndex.copyOfRange(0, 12)
+                val encrypted = encryptedIndex.copyOfRange(12, encryptedIndex.size)
+                val ivBase64 = android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP)
+                val decrypted = CryptoManager.decrypt(encrypted, masterKey, ivBase64)
+                VideoIndex.fromBytes(decrypted)
+            } else {
+                VideoIndex(emptyList())
+            }
+        } catch (e: Exception) {
+            VideoIndex(emptyList())
+        }
+        
+        // 添加新条目
+        val updatedIndex = currentIndex.addVideo(newEntry)
+        
+        // 加密并上传
+        val indexIv = CryptoManager.generateIV()
+        val indexBytes = updatedIndex.toBytes()
+        val encryptedIndex = CryptoManager.encrypt(indexBytes, masterKey, indexIv)
+        
+        val ivBytes = android.util.Base64.decode(indexIv, android.util.Base64.NO_WRAP)
+        val finalIndex = ByteArray(ivBytes.size + encryptedIndex.size)
+        System.arraycopy(ivBytes, 0, finalIndex, 0, ivBytes.size)
+        System.arraycopy(encryptedIndex, 0, finalIndex, ivBytes.size, encryptedIndex.size)
+        
+        webdavClient.uploadFile(indexPath, finalIndex).getOrThrow()
     }
     
     fun resetState() {

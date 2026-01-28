@@ -8,9 +8,12 @@ data class VideoItem(
     val title: String,
     val description: String,
     val durationMs: Long,
-    val coverUrl: String?,  // 本地缓存路径或null
-    val remotePath: String, // WebDAV上的路径
-    val metadata: VideoMetadata? = null
+    val coverUrl: String?,   // 本地缓存路径或null
+    val remotePath: String,  // WebDAV上的路径
+    val metadata: VideoMetadata? = null,
+    val hasCover: Boolean = false,
+    val originalFileSize: Long = 0,
+    val createdAt: Long = 0
 ) {
     fun getDurationFormatted(): String {
         val totalSeconds = durationMs / 1000
@@ -22,6 +25,15 @@ data class VideoItem(
             String.format("%d:%02d:%02d", hours, minutes, seconds)
         } else {
             String.format("%02d:%02d", minutes, seconds)
+        }
+    }
+    
+    fun getFileSizeFormatted(): String {
+        return when {
+            originalFileSize < 1024 -> "$originalFileSize B"
+            originalFileSize < 1024 * 1024 -> String.format("%.1f KB", originalFileSize / 1024.0)
+            originalFileSize < 1024 * 1024 * 1024 -> String.format("%.1f MB", originalFileSize / (1024.0 * 1024))
+            else -> String.format("%.2f GB", originalFileSize / (1024.0 * 1024 * 1024))
         }
     }
 }
