@@ -64,6 +64,7 @@ dependencies {
     // Network
     implementation(libs.okhttp)
     implementation(libs.gson)
+    implementation(libs.commons.net)
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)

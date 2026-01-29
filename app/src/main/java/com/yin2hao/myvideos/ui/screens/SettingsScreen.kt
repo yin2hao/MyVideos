@@ -26,6 +26,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yin2hao.myvideos.data.model.ConnectionState
+import com.yin2hao.myvideos.data.model.Settings
+import com.yin2hao.myvideos.data.model.StorageType
 import com.yin2hao.myvideos.ui.viewmodel.SettingsViewModel
 import com.yin2hao.myvideos.ui.viewmodel.SettingsViewModelFactory
 import kotlinx.coroutines.launch
@@ -68,6 +70,9 @@ fun SettingsScreen(
     var showPassword by remember { mutableStateOf(false) }
     var showMasterPassword by remember { mutableStateOf(false) }
     var showWebDAVPassword by remember { mutableStateOf(false) }
+    var showFtpPassword by remember { mutableStateOf(false) }
+    var showS3SecretKey by remember { mutableStateOf(false) }
+    var storageTypeExpanded by remember { mutableStateOf(false) }
     
     Column(
         modifier = modifier
@@ -118,7 +123,7 @@ fun SettingsScreen(
             }
         }
 
-        // WebDAV 设置卡片
+        // 云存储设置卡片
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -132,7 +137,7 @@ fun SettingsScreen(
                 ) {
                     Icon(Icons.Default.Cloud, contentDescription = null)
                     Text(
-                        text = "WebDAV 服务器设置",
+                        text = "云存储设置",
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(modifier = Modifier.weight(1f))
@@ -140,42 +145,75 @@ fun SettingsScreen(
                     ConnectionIndicator(state = connectionState)
                 }
                 
-                OutlinedTextField(
-                    value = settings.webdavUrl,
-                    onValueChange = { viewModel.updateWebDAVUrl(it) },
-                    label = { Text("服务器地址") },
-                    placeholder = { Text("https://example.com/dav") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) }
-                )
-                
-                OutlinedTextField(
-                    value = settings.webdavUsername,
-                    onValueChange = { viewModel.updateWebDAVUsername(it) },
-                    label = { Text("用户名") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }
-                )
-                
-                OutlinedTextField(
-                    value = settings.webdavPassword,
-                    onValueChange = { viewModel.updateWebDAVPassword(it) },
-                    label = { Text("密码") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    visualTransformation = if (showWebDAVPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-                    trailingIcon = {
-                        IconButton(onClick = { showWebDAVPassword = !showWebDAVPassword }) {
-                            Icon(
-                                if (showWebDAVPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (showWebDAVPassword) "隐藏密码" else "显示密码"
-                            )
-                        }
+                // 存储类型选择
+                ExposedDropdownMenuBox(
+                    expanded = storageTypeExpanded,
+                    onExpandedChange = { storageTypeExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = when(settings.storageType) {
+                            StorageType.WEBDAV -> "WebDAV"
+                            StorageType.FTP -> "FTP/FTPS"
+                            StorageType.S3 -> "S3 兼容存储"
+                        },
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("存储类型") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = storageTypeExpanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(),
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = storageTypeExpanded,
+                        onDismissRequest = { storageTypeExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("WebDAV") },
+                            onClick = {
+                                viewModel.updateStorageType(StorageType.WEBDAV)
+                                storageTypeExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("FTP/FTPS") },
+                            onClick = {
+                                viewModel.updateStorageType(StorageType.FTP)
+                                storageTypeExpanded = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("S3 兼容存储") },
+                            onClick = {
+                                viewModel.updateStorageType(StorageType.S3)
+                                storageTypeExpanded = false
+                            }
+                        )
                     }
-                )
+                }
+                
+                // 根据选择的存储类型显示不同的配置项
+                when(settings.storageType) {
+                    StorageType.WEBDAV -> WebDAVSettings(
+                        settings = settings,
+                        viewModel = viewModel,
+                        showPassword = showWebDAVPassword,
+                        onShowPasswordChange = { showWebDAVPassword = it }
+                    )
+                    StorageType.FTP -> FTPSettings(
+                        settings = settings,
+                        viewModel = viewModel,
+                        showPassword = showFtpPassword,
+                        onShowPasswordChange = { showFtpPassword = it }
+                    )
+                    StorageType.S3 -> S3Settings(
+                        settings = settings,
+                        viewModel = viewModel,
+                        showSecretKey = showS3SecretKey,
+                        onShowSecretKeyChange = { showS3SecretKey = it }
+                    )
+                }
                 
                 OutlinedTextField(
                     value = settings.remoteBasePath,
@@ -368,3 +406,203 @@ private fun ConnectionIndicator(state: ConnectionState) {
             .background(color)
     )
 }
+
+// WebDAV 配置项
+@Composable
+private fun WebDAVSettings(
+    settings: Settings,
+    viewModel: SettingsViewModel,
+    showPassword: Boolean,
+    onShowPasswordChange: (Boolean) -> Unit
+) {
+    OutlinedTextField(
+        value = settings.webdavUrl,
+        onValueChange = { viewModel.updateWebDAVUrl(it) },
+        label = { Text("服务器地址") },
+        placeholder = { Text("https://example.com/dav") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) }
+    )
+    
+    OutlinedTextField(
+        value = settings.webdavUsername,
+        onValueChange = { viewModel.updateWebDAVUsername(it) },
+        label = { Text("用户名") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }
+    )
+    
+    OutlinedTextField(
+        value = settings.webdavPassword,
+        onValueChange = { viewModel.updateWebDAVPassword(it) },
+        label = { Text("密码") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+        trailingIcon = {
+            IconButton(onClick = { onShowPasswordChange(!showPassword) }) {
+                Icon(
+                    if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (showPassword) "隐藏密码" else "显示密码"
+                )
+            }
+        }
+    )
+}
+
+// FTP 配置项
+@Composable
+private fun FTPSettings(
+    settings: Settings,
+    viewModel: SettingsViewModel,
+    showPassword: Boolean,
+    onShowPasswordChange: (Boolean) -> Unit
+) {
+    OutlinedTextField(
+        value = settings.ftpHost,
+        onValueChange = { viewModel.updateFtpHost(it) },
+        label = { Text("FTP 服务器地址") },
+        placeholder = { Text("ftp.example.com") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) }
+    )
+    
+    OutlinedTextField(
+        value = settings.ftpPort.toString(),
+        onValueChange = { 
+            it.toIntOrNull()?.let { port -> viewModel.updateFtpPort(port) }
+        },
+        label = { Text("端口") },
+        placeholder = { Text("21") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+    )
+    
+    OutlinedTextField(
+        value = settings.ftpUsername,
+        onValueChange = { viewModel.updateFtpUsername(it) },
+        label = { Text("用户名") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }
+    )
+    
+    OutlinedTextField(
+        value = settings.ftpPassword,
+        onValueChange = { viewModel.updateFtpPassword(it) },
+        label = { Text("密码") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+        trailingIcon = {
+            IconButton(onClick = { onShowPasswordChange(!showPassword) }) {
+                Icon(
+                    if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (showPassword) "隐藏密码" else "显示密码"
+                )
+            }
+        }
+    )
+    
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text("使用 FTPS (安全连接)")
+        Switch(
+            checked = settings.ftpUseFTPS,
+            onCheckedChange = { viewModel.updateFtpUseFTPS(it) }
+        )
+    }
+}
+
+// S3 配置项
+@Composable
+private fun S3Settings(
+    settings: Settings,
+    viewModel: SettingsViewModel,
+    showSecretKey: Boolean,
+    onShowSecretKeyChange: (Boolean) -> Unit
+) {
+    OutlinedTextField(
+        value = settings.s3Endpoint,
+        onValueChange = { viewModel.updateS3Endpoint(it) },
+        label = { Text("S3 端点 (可选)") },
+        placeholder = { Text("留空使用 AWS S3") },
+        supportingText = { Text("兼容 MinIO、阿里云 OSS 等") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) }
+    )
+    
+    OutlinedTextField(
+        value = settings.s3Region,
+        onValueChange = { viewModel.updateS3Region(it) },
+        label = { Text("区域") },
+        placeholder = { Text("us-east-1") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true
+    )
+    
+    OutlinedTextField(
+        value = settings.s3Bucket,
+        onValueChange = { viewModel.updateS3Bucket(it) },
+        label = { Text("存储桶名称") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true
+    )
+    
+    OutlinedTextField(
+        value = settings.s3AccessKey,
+        onValueChange = { viewModel.updateS3AccessKey(it) },
+        label = { Text("Access Key") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+    )
+    
+    OutlinedTextField(
+        value = settings.s3SecretKey,
+        onValueChange = { viewModel.updateS3SecretKey(it) },
+        label = { Text("Secret Key") },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        visualTransformation = if (showSecretKey) VisualTransformation.None else PasswordVisualTransformation(),
+        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+        trailingIcon = {
+            IconButton(onClick = { onShowSecretKeyChange(!showSecretKey) }) {
+                Icon(
+                    if (showSecretKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (showSecretKey) "隐藏密钥" else "显示密钥"
+                )
+            }
+        }
+    )
+    
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("使用 Path Style 访问")
+            Text(
+                text = "MinIO 等需要开启",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = settings.s3UsePathStyle,
+            onCheckedChange = { viewModel.updateS3UsePathStyle(it) }
+        )
+    }
+}
+

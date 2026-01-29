@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.yin2hao.myvideos.data.model.ConnectionState
 import com.yin2hao.myvideos.data.model.Settings
+import com.yin2hao.myvideos.data.model.StorageType
 import com.yin2hao.myvideos.data.repository.SettingsRepository
 import com.yin2hao.myvideos.network.WebDAVClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,19 +65,80 @@ class SettingsViewModel(
         _settings.value = _settings.value.copy(dynamicColor = enabled)
     }
     
+    // 存储类型
+    fun updateStorageType(type: StorageType) {
+        _settings.value = _settings.value.copy(storageType = type)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    // FTP 配置
+    fun updateFtpHost(host: String) {
+        _settings.value = _settings.value.copy(ftpHost = host)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    fun updateFtpPort(port: Int) {
+        _settings.value = _settings.value.copy(ftpPort = port)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    fun updateFtpUsername(username: String) {
+        _settings.value = _settings.value.copy(ftpUsername = username)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    fun updateFtpPassword(password: String) {
+        _settings.value = _settings.value.copy(ftpPassword = password)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    fun updateFtpUseFTPS(useFTPS: Boolean) {
+        _settings.value = _settings.value.copy(ftpUseFTPS = useFTPS)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    // S3 配置
+    fun updateS3Endpoint(endpoint: String) {
+        _settings.value = _settings.value.copy(s3Endpoint = endpoint)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    fun updateS3Region(region: String) {
+        _settings.value = _settings.value.copy(s3Region = region)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    fun updateS3Bucket(bucket: String) {
+        _settings.value = _settings.value.copy(s3Bucket = bucket)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    fun updateS3AccessKey(key: String) {
+        _settings.value = _settings.value.copy(s3AccessKey = key)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    fun updateS3SecretKey(key: String) {
+        _settings.value = _settings.value.copy(s3SecretKey = key)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
+    fun updateS3UsePathStyle(usePathStyle: Boolean) {
+        _settings.value = _settings.value.copy(s3UsePathStyle = usePathStyle)
+        _connectionState.value = ConnectionState.Unknown
+    }
+    
     fun testConnection() {
         viewModelScope.launch {
             _connectionState.value = ConnectionState.Testing
             
             val currentSettings = _settings.value
-            if (currentSettings.webdavUrl.isBlank() ||
-                currentSettings.webdavUsername.isBlank() ||
-                currentSettings.webdavPassword.isBlank()) {
-                _connectionState.value = ConnectionState.Failed("请填写完整的WebDAV信息")
+            if (!currentSettings.isValid()) {
+                _connectionState.value = ConnectionState.Failed("请填写完整的配置信息")
                 return@launch
             }
             
-            val client = WebDAVClient(currentSettings)
+            val client = com.yin2hao.myvideos.network.CloudStorageClientFactory.createClient(currentSettings)
             val result = client.testConnection()
             
             _connectionState.value = if (result.isSuccess) {

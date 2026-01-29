@@ -8,7 +8,8 @@ import com.yin2hao.myvideos.data.model.VideoIndex
 import com.yin2hao.myvideos.data.model.VideoIndexEntry
 import com.yin2hao.myvideos.data.model.VideoItem
 import com.yin2hao.myvideos.data.model.VideoMetadata
-import com.yin2hao.myvideos.network.WebDAVClient
+import com.yin2hao.myvideos.network.CloudStorageClient
+import com.yin2hao.myvideos.network.CloudStorageClientFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -30,7 +31,7 @@ class VideoRepository(
     private val context: Context,
     private val settings: Settings
 ) {
-    private val webdavClient = WebDAVClient(settings)
+    private val storageClient: CloudStorageClient = CloudStorageClientFactory.createClient(settings)
     private val cacheDir = File(context.cacheDir, "video_covers")
     
     // 路径常量
@@ -53,7 +54,7 @@ class VideoRepository(
             val masterKey = CryptoManager.deriveKeyFromPassword(settings.masterPassword)
             
             // 下载并解密索引文件
-            val encryptedIndex = webdavClient.downloadFile(indexPath).getOrNull()
+            val encryptedIndex = storageClient.downloadFile(indexPath).getOrNull()
             
             if (encryptedIndex == null || encryptedIndex.size <= 12) {
                 // 索引文件不存在或为空，返回空列表
@@ -117,7 +118,7 @@ class VideoRepository(
             
             // 下载加密的封面
             val coverPath = "$coversPath$videoId.enc"
-            val encryptedCover = webdavClient.downloadFile(coverPath).getOrNull() 
+            val encryptedCover = storageClient.downloadFile(coverPath).getOrNull() 
                 ?: return@withContext null
             
             // 解密
@@ -143,7 +144,7 @@ class VideoRepository(
     suspend fun loadVideoMetadata(videoId: String): VideoMetadata? = withContext(Dispatchers.IO) {
         try {
             val metaPath = "${videosPath}$videoId/meta.bin"
-            val encryptedData = webdavClient.downloadFile(metaPath).getOrNull() 
+            val encryptedData = storageClient.downloadFile(metaPath).getOrNull() 
                 ?: return@withContext null
             
             // 提取IV（前12字节）
@@ -191,11 +192,11 @@ class VideoRepository(
         try {
             // 删除视频目录
             val videoPath = "${videosPath}$videoId/"
-            webdavClient.delete(videoPath)
+            storageClient.deleteFile(videoPath)
             
             // 删除封面
             val coverPath = "$coversPath$videoId.enc"
-            webdavClient.delete(coverPath)
+            storageClient.deleteFile(coverPath)
             
             // 更新索引
             removeFromIndex(videoId)
@@ -220,7 +221,7 @@ class VideoRepository(
             val masterKey = CryptoManager.deriveKeyFromPassword(settings.masterPassword)
             
             // 加载现有索引
-            val encryptedIndex = webdavClient.downloadFile(indexPath).getOrNull() ?: return
+            val encryptedIndex = storageClient.downloadFile(indexPath).getOrNull() ?: return
             if (encryptedIndex.size <= 12) return
             
             val iv = encryptedIndex.copyOfRange(0, 12)
@@ -243,7 +244,7 @@ class VideoRepository(
             System.arraycopy(ivBytes, 0, finalIndex, 0, ivBytes.size)
             System.arraycopy(encryptedNew, 0, finalIndex, ivBytes.size, encryptedNew.size)
             
-            webdavClient.uploadFile(indexPath, finalIndex)
+            storageClient.uploadFile(indexPath, finalIndex)
         } catch (e: Exception) {
             e.printStackTrace()
         }

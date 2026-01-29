@@ -9,7 +9,8 @@ import com.yin2hao.myvideos.data.model.UploadState
 import com.yin2hao.myvideos.data.model.VideoIndex
 import com.yin2hao.myvideos.data.model.VideoIndexEntry
 import com.yin2hao.myvideos.data.model.VideoMetadata
-import com.yin2hao.myvideos.network.WebDAVClient
+import com.yin2hao.myvideos.network.CloudStorageClient
+import com.yin2hao.myvideos.network.CloudStorageClientFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +34,7 @@ class VideoUploadManager(
     private val context: Context,
     private val settings: Settings
 ) {
-    private val webdavClient = WebDAVClient(settings)
+    private val storageClient: CloudStorageClient = CloudStorageClientFactory.createClient(settings)
     private val metadataExtractor = VideoMetadataExtractor(context)
     private val chunker = VideoChunker(context)
     
@@ -66,10 +67,10 @@ class VideoUploadManager(
             val videoPath = "${videosPath}$videoId/"
             
             // 创建远程目录结构
-            webdavClient.createDirectory(basePath).getOrThrow()
-            webdavClient.createDirectory(coversPath).getOrThrow()
-            webdavClient.createDirectory(videosPath).getOrThrow()
-            webdavClient.createDirectory(videoPath).getOrThrow()
+            storageClient.createDirectory(basePath).getOrThrow()
+            storageClient.createDirectory(coversPath).getOrThrow()
+            storageClient.createDirectory(videosPath).getOrThrow()
+            storageClient.createDirectory(videoPath).getOrThrow()
             
             // 提取视频信息
             val videoInfo = metadataExtractor.extractMetadata(videoUri)
@@ -107,7 +108,7 @@ class VideoUploadManager(
                     val chunkFilename = "chunk_${String.format("%04d", chunk.index)}.enc"
                     val chunkPath = "$videoPath$chunkFilename"
                     
-                    webdavClient.uploadFile(chunkPath, encryptedData).getOrThrow()
+                    storageClient.uploadFile(chunkPath, encryptedData).getOrThrow()
                     
                     chunkInfos.add(ChunkInfo(
                         index = chunk.index,
@@ -129,7 +130,7 @@ class VideoUploadManager(
             val coverData = metadataExtractor.extractCover(videoUri)
             val hasCover = if (coverData != null) {
                 val encryptedCover = CryptoManager.encrypt(coverData, coverKey, coverIv)
-                webdavClient.uploadFile("$coversPath$videoId.enc", encryptedCover).getOrThrow()
+                storageClient.uploadFile("$coversPath$videoId.enc", encryptedCover).getOrThrow()
                 true
             } else {
                 false
@@ -167,7 +168,7 @@ class VideoUploadManager(
             System.arraycopy(ivBytes, 0, finalMetadata, 0, ivBytes.size)
             System.arraycopy(encryptedMetadata, 0, finalMetadata, ivBytes.size, encryptedMetadata.size)
             
-            webdavClient.uploadFile("${videoPath}meta.bin", finalMetadata).getOrThrow()
+            storageClient.uploadFile("${videoPath}meta.bin", finalMetadata).getOrThrow()
             
             // 更新总索引文件
             updateIndex(VideoIndexEntry(
@@ -199,7 +200,7 @@ class VideoUploadManager(
         
         // 尝试加载现有索引
         val currentIndex = try {
-            val encryptedIndex = webdavClient.downloadFile(indexPath).getOrNull()
+            val encryptedIndex = storageClient.downloadFile(indexPath).getOrNull()
             if (encryptedIndex != null && encryptedIndex.size > 12) {
                 val iv = encryptedIndex.copyOfRange(0, 12)
                 val encrypted = encryptedIndex.copyOfRange(12, encryptedIndex.size)
@@ -226,7 +227,7 @@ class VideoUploadManager(
         System.arraycopy(ivBytes, 0, finalIndex, 0, ivBytes.size)
         System.arraycopy(encryptedIndex, 0, finalIndex, ivBytes.size, encryptedIndex.size)
         
-        webdavClient.uploadFile(indexPath, finalIndex).getOrThrow()
+        storageClient.uploadFile(indexPath, finalIndex).getOrThrow()
     }
     
     fun resetState() {
