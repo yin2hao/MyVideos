@@ -89,9 +89,15 @@ jobs:
             app/build/outputs/apk/release/app-release-unsigned.apk \
             app/build/outputs/apk/release/app-release-unsigned-aligned.apk
           
-          # 创建密码文件（更安全的方式）
-          echo "$KEYSTORE_PASSWORD" > /tmp/ks-pass.txt
-          echo "$KEY_PASSWORD" > /tmp/key-pass.txt
+          # 检查密钥相关环境变量是否已配置
+          if [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "Error: keystore passwords are empty; check secrets KEY_STORE_PASSWORD/KEY_PASSWORD"
+            exit 1
+          fi
+
+          # 创建密码文件（避免空文件）
+          printf '%s' "$KEYSTORE_PASSWORD" > /tmp/ks-pass.txt
+          printf '%s' "$KEY_PASSWORD" > /tmp/key-pass.txt
           
           # 签名 APK
           $BUILD_TOOLS/apksigner sign \
