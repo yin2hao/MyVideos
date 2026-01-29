@@ -17,16 +17,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    signingConfigs {
-        create("release") {
-            // 从命令行参数或环境变量获取签名配置
-            storeFile = project.findProperty("android.injected.signing.store.file")?.toString()?.let { file(it) }
-            storePassword = project.findProperty("android.injected.signing.store.password")?.toString()
-            keyAlias = project.findProperty("android.injected.signing.key.alias")?.toString()
-            keyPassword = project.findProperty("android.injected.signing.key.password")?.toString()
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -34,10 +24,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 如果提供了签名配置，则使用它
-            if (signingConfigs.getByName("release").storeFile != null) {
-                signingConfig = signingConfigs.getByName("release")
-            }
         }
     }
     compileOptions {
