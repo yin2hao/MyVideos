@@ -6,9 +6,8 @@ package com.yin2hao.myvideos.data.model
 sealed class UploadState {
     object Idle : UploadState()
     object Preparing : UploadState()
-    data class Chunking(val progress: Float, val currentChunk: Int, val totalChunks: Int) : UploadState()
-    data class Encrypting(val progress: Float, val currentChunk: Int, val totalChunks: Int) : UploadState()
-    data class Uploading(val progress: Float, val currentChunk: Int, val totalChunks: Int) : UploadState()
+    data class Encrypting(val progress: Float) : UploadState()
+    data class Uploading(val progress: Float) : UploadState()
     object UploadingMetadata : UploadState()
     object UploadingCover : UploadState()
     object Success : UploadState()

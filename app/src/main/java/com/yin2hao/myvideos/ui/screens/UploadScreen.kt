@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.yin2hao.myvideos.data.model.UploadState
-import com.yin2hao.myvideos.ui.viewmodel.UploadMode
 import com.yin2hao.myvideos.ui.viewmodel.UploadViewModel
 import com.yin2hao.myvideos.ui.viewmodel.UploadViewModelFactory
 import kotlinx.coroutines.launch
@@ -47,7 +46,7 @@ fun UploadScreen(
     val description by viewModel.description.collectAsState()
     val uploadState by viewModel.uploadState.collectAsState()
     val settingsValid by viewModel.settingsValid.collectAsState()
-    val uploadMode by viewModel.uploadMode.collectAsState()
+    val resultConsumed by viewModel.resultConsumed.collectAsState()
     val scope = rememberCoroutineScope()
     
     val videoPickerLauncher = rememberLauncherForActivityResult(
@@ -58,15 +57,19 @@ fun UploadScreen(
         }
     }
     
-    LaunchedEffect(uploadState) {
-        when (uploadState) {
-            is UploadState.Success -> {
-                Toast.makeText(context, "上传成功！", Toast.LENGTH_SHORT).show()
+    LaunchedEffect(uploadState, resultConsumed) {
+        if (!resultConsumed) {
+            when (uploadState) {
+                is UploadState.Success -> {
+                    Toast.makeText(context, "上传成功！", Toast.LENGTH_SHORT).show()
+                    viewModel.consumeResult()
+                }
+                is UploadState.Error -> {
+                    Toast.makeText(context, (uploadState as UploadState.Error).message, Toast.LENGTH_LONG).show()
+                    viewModel.consumeResult()
+                }
+                else -> {}
             }
-            is UploadState.Error -> {
-                Toast.makeText(context, (uploadState as UploadState.Error).message, Toast.LENGTH_LONG).show()
-            }
-            else -> {}
         }
     }
     
@@ -231,87 +234,6 @@ fun UploadScreen(
             }
         }
         
-        // 加密模式选择
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Default.Lock, contentDescription = null)
-                    Text(
-                        text = "加密模式",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                }
-                
-                // 流式加密选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(enabled = uploadState is UploadState.Idle || uploadState is UploadState.Success || uploadState is UploadState.Error) {
-                            viewModel.setUploadMode(UploadMode.STREAM)
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = uploadMode == UploadMode.STREAM,
-                        onClick = { viewModel.setUploadMode(UploadMode.STREAM) },
-                        enabled = uploadState is UploadState.Idle || uploadState is UploadState.Success || uploadState is UploadState.Error
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "流式加密 (推荐)",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Text(
-                            text = "AES-256-CTR · 支持随机播放位置 · 单文件存储",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                
-                // 分块加密选项
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(enabled = uploadState is UploadState.Idle || uploadState is UploadState.Success || uploadState is UploadState.Error) {
-                            viewModel.setUploadMode(UploadMode.CHUNKED)
-                        }
-                        .padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(
-                        selected = uploadMode == UploadMode.CHUNKED,
-                        onClick = { viewModel.setUploadMode(UploadMode.CHUNKED) },
-                        enabled = uploadState is UploadState.Idle || uploadState is UploadState.Success || uploadState is UploadState.Error
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "分块加密",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Text(
-                            text = "AES-256-GCM · 带认证防篡改 · 多文件分块存储",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-        
         // 上传进度
         if (uploadState !is UploadState.Idle && uploadState !is UploadState.Success && uploadState !is UploadState.Error) {
             Card(
@@ -336,17 +258,6 @@ fun UploadScreen(
                     }
                     
                     when (uploadState) {
-                        is UploadState.Chunking -> {
-                            val state = uploadState as UploadState.Chunking
-                            LinearProgressIndicator(
-                                progress = { state.progress },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Text(
-                                text = "分块: ${state.currentChunk}/${state.totalChunks}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
                         is UploadState.Encrypting -> {
                             val state = uploadState as UploadState.Encrypting
                             LinearProgressIndicator(
@@ -354,7 +265,7 @@ fun UploadScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Text(
-                                text = "加密: ${state.currentChunk}/${state.totalChunks}",
+                                text = "加密进度: ${(state.progress * 100).toInt()}%",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -365,7 +276,7 @@ fun UploadScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Text(
-                                text = "上传: ${state.currentChunk}/${state.totalChunks}",
+                                text = "上传进度: ${(state.progress * 100).toInt()}%",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -413,7 +324,6 @@ private fun getUploadStateText(state: UploadState): String {
     return when (state) {
         is UploadState.Idle -> "准备就绪"
         is UploadState.Preparing -> "准备中..."
-        is UploadState.Chunking -> "正在分块..."
         is UploadState.Encrypting -> "正在加密..."
         is UploadState.Uploading -> "正在上传..."
         is UploadState.UploadingMetadata -> "正在上传元数据..."

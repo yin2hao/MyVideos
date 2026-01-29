@@ -12,19 +12,10 @@ import com.yin2hao.myvideos.network.WebDAVClient
 import com.yin2hao.myvideos.video.StreamVideoUploadManager
 import com.yin2hao.myvideos.video.VideoInfo
 import com.yin2hao.myvideos.video.VideoMetadataExtractor
-import com.yin2hao.myvideos.video.VideoUploadManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-
-/**
- * 上传模式
- */
-enum class UploadMode {
-    CHUNKED,  // 分块加密 (AES-GCM)
-    STREAM    // 流式加密 (AES-CTR)
-}
 
 class UploadViewModel(
     private val context: Context,
@@ -51,8 +42,9 @@ class UploadViewModel(
     private val _settingsValid = MutableStateFlow(false)
     val settingsValid: StateFlow<Boolean> = _settingsValid
     
-    private val _uploadMode = MutableStateFlow(UploadMode.STREAM)  // 默认使用流式加密
-    val uploadMode: StateFlow<UploadMode> = _uploadMode
+    // 标记是否已经消费过成功/错误状态（用于避免 Toast 重复显示）
+    private val _resultConsumed = MutableStateFlow(false)
+    val resultConsumed: StateFlow<Boolean> = _resultConsumed
     
     private var currentSettings: Settings = Settings()
     
@@ -87,13 +79,19 @@ class UploadViewModel(
         _description.value = description
     }
     
-    fun setUploadMode(mode: UploadMode) {
-        _uploadMode.value = mode
+    /**
+     * 标记结果已被消费（Toast 已显示）
+     */
+    fun consumeResult() {
+        _resultConsumed.value = true
     }
     
     suspend fun startUpload() {
         val uri = _selectedVideoUri.value ?: return
         val videoTitle = _title.value.takeIf { it.isNotBlank() } ?: return
+        
+        // 重置结果消费标志
+        _resultConsumed.value = false
         
         // 获取最新的设置
         val settings = settingsRepository.settingsFlow.first()
@@ -102,47 +100,26 @@ class UploadViewModel(
             return
         }
         
-        when (_uploadMode.value) {
-            UploadMode.CHUNKED -> startChunkedUpload(uri, videoTitle, settings)
-            UploadMode.STREAM -> startStreamUpload(uri, videoTitle, settings)
-        }
-    }
-    
-    private suspend fun startChunkedUpload(uri: Uri, videoTitle: String, settings: Settings) {
-        val uploadManager = VideoUploadManager(context, settings)
-        
-        // 监听上传状态
-        viewModelScope.launch {
-            uploadManager.uploadState.collect {
-                _uploadState.value = it
-            }
-        }
-        
-        // 开始上传
-        val videoId = uploadManager.uploadVideo(
-            videoUri = uri,
-            title = videoTitle,
-            description = _description.value
-        )
-        
-        if (videoId != null) {
-            _uploadState.value = UploadState.Success
-        }
+        startStreamUpload(uri, videoTitle, settings)
     }
     
     private suspend fun startStreamUpload(uri: Uri, videoTitle: String, settings: Settings) {
         val webDavClient = WebDAVClient(settings)
-        val uploadManager = StreamVideoUploadManager(webDavClient, context.contentResolver)
+        val uploadManager = StreamVideoUploadManager(
+            webDavClient, 
+            context.contentResolver,
+            settings.masterPassword
+        )
         
         // 监听上传进度
         viewModelScope.launch {
             uploadManager.uploadProgress.collect { progress ->
                 if (progress != null) {
-                    _uploadState.value = UploadState.Uploading(
-                        progress = progress.progress,
-                        currentChunk = 0,
-                        totalChunks = 1
-                    )
+                    when (progress.phase) {
+                        "encrypting" -> _uploadState.value = UploadState.Encrypting(progress.progress)
+                        "uploading" -> _uploadState.value = UploadState.Uploading(progress.progress)
+                        "finishing" -> _uploadState.value = UploadState.UploadingMetadata
+                    }
                 }
             }
         }
@@ -179,6 +156,7 @@ class UploadViewModel(
         _title.value = ""
         _description.value = ""
         _uploadState.value = UploadState.Idle
+        _resultConsumed.value = false
     }
 }
 

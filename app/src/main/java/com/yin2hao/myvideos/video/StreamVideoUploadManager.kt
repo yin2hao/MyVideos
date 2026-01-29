@@ -26,7 +26,8 @@ import java.util.UUID
  */
 class StreamVideoUploadManager(
     private val webDAVClient: WebDAVClient,
-    private val contentResolver: ContentResolver
+    private val contentResolver: ContentResolver,
+    private val masterPassword: String
 ) {
     data class UploadProgress(
         val videoId: String,
@@ -205,7 +206,8 @@ class StreamVideoUploadManager(
                 fileSize = actualFileSize,
                 mimeType = mimeType,
                 hasCover = hasCover,
-                isStream = true  // 标记为流式加密
+                isStream = true,  // 标记为流式加密
+                masterPassword = masterPassword
             )
             
             _uploadProgress.value = UploadProgress(
@@ -240,21 +242,31 @@ class StreamVideoUploadManager(
         fileSize: Long,
         mimeType: String,
         hasCover: Boolean,
-        isStream: Boolean
+        isStream: Boolean,
+        masterPassword: String
     ) {
         val indexPath = "${basePath}index.bin"
+        val masterKey = CryptoManager.deriveKeyFromPassword(masterPassword)
         
+        // 尝试加载现有索引
         val existingVideos = try {
-            val indexData = webDAVClient.downloadFile(indexPath).getOrNull()
-            if (indexData != null) {
-                VideoIndex.fromBytes(indexData).videos.toMutableList()
+            val encryptedIndex = webDAVClient.downloadFile(indexPath).getOrNull()
+            if (encryptedIndex != null && encryptedIndex.size > 12) {
+                // 解密索引
+                val iv = encryptedIndex.copyOfRange(0, 12)
+                val encrypted = encryptedIndex.copyOfRange(12, encryptedIndex.size)
+                val ivBase64 = android.util.Base64.encodeToString(iv, android.util.Base64.NO_WRAP)
+                val decrypted = CryptoManager.decrypt(encrypted, masterKey, ivBase64)
+                VideoIndex.fromBytes(decrypted).videos.toMutableList()
             } else {
                 mutableListOf()
             }
         } catch (e: Exception) {
+            e.printStackTrace()
             mutableListOf()
         }
         
+        // 添加新视频条目
         val newEntry = VideoIndexEntry(
             videoId = videoId,
             title = title,
@@ -269,7 +281,18 @@ class StreamVideoUploadManager(
         
         existingVideos.add(0, newEntry)
         
+        // 加密并上传索引
         val newIndex = VideoIndex(existingVideos)
-        webDAVClient.uploadFile(indexPath, newIndex.toBytes()).getOrThrow()
+        val indexIv = CryptoManager.generateIV()
+        val indexBytes = newIndex.toBytes()
+        val encryptedIndex = CryptoManager.encrypt(indexBytes, masterKey, indexIv)
+        
+        // 合并 IV + 加密数据
+        val ivBytes = android.util.Base64.decode(indexIv, android.util.Base64.NO_WRAP)
+        val finalIndex = ByteArray(ivBytes.size + encryptedIndex.size)
+        System.arraycopy(ivBytes, 0, finalIndex, 0, ivBytes.size)
+        System.arraycopy(encryptedIndex, 0, finalIndex, ivBytes.size, encryptedIndex.size)
+        
+        webDAVClient.uploadFile(indexPath, finalIndex).getOrThrow()
     }
 }
