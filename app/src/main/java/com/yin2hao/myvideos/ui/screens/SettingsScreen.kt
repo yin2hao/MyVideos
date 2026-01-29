@@ -67,7 +67,6 @@ fun SettingsScreen(
         }
     }
     
-    var showPassword by remember { mutableStateOf(false) }
     var showMasterPassword by remember { mutableStateOf(false) }
     var showWebDAVPassword by remember { mutableStateOf(false) }
     var showFtpPassword by remember { mutableStateOf(false) }
