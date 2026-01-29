@@ -35,8 +35,19 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Extract Version from Tag
+        id: version
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          VERSION_NAME="${TAG_NAME#v}"
+          VERSION_CODE=$(echo $VERSION_NAME | sed 's/[^0-9]//g' | sed 's/^0*//')
+          if [ -z "$VERSION_CODE" ]; then VERSION_CODE=1; fi
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION_NAME (code: $VERSION_CODE)"
+
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease -PversionName=${{ steps.version.outputs.version_name }} -PversionCode=${{ steps.version.outputs.version_code }}
 
       - name: Sign Release APK
         id: sign_app

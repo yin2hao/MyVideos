@@ -11,8 +11,8 @@ android {
         applicationId = "com.yin2hao.myvideos"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = project.findProperty("versionName") as String? ?: "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -56,33 +56,33 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.compose.material.icons.extended)
-    
+
     // Navigation
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    
+
     // Network
     implementation(libs.okhttp)
     implementation(libs.gson)
-    
+
     // DataStore
     implementation(libs.androidx.datastore.preferences)
-    
+
     // Media3 ExoPlayer
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.datasource.okhttp)
-    
+
     // Image loading
     implementation(libs.coil.compose)
-    
+
     // Local HTTP server
     implementation(libs.nanohttpd)
-    
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
-    
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
