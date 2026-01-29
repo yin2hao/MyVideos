@@ -151,14 +151,21 @@ jobs:
           rm -f /tmp/ks-pass.txt /tmp/key-pass.txt
           echo "🧹 Keystore and sensitive files cleaned"
 
-      - name: Upload Artifact (Pre-release)
+      - name: Upload APK Artifact (Pre-release)
         if: steps.tag_check.outputs.is_prerelease == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: MyVideos-${{ steps.tag_check.outputs.tag_name }}
-          path: |
-            app/build/outputs/apk/release/MyVideos-${{ steps.tag_check.outputs.tag_name }}.apk
-            app/build/outputs/apk/release/MyVideos-${{ steps.tag_check.outputs.tag_name }}.apk.sha256
+          name: MyVideos-${{ steps.tag_check.outputs.tag_name }}-apk
+          path: app/build/outputs/apk/release/MyVideos-${{ steps.tag_check.outputs.tag_name }}.apk
+          compression-level: 0
+
+      - name: Upload Checksum Artifact (Pre-release)
+        if: steps.tag_check.outputs.is_prerelease == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyVideos-${{ steps.tag_check.outputs.tag_name }}-sha256
+          path: app/build/outputs/apk/release/MyVideos-${{ steps.tag_check.outputs.tag_name }}.apk.sha256
+          compression-level: 0
 
       - name: Create Release (Formal)
         uses: softprops/action-gh-release@v2
