@@ -290,7 +290,7 @@ fun PlayerScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 // 快退指示器
-                                AnimatedVisibility(
+                                androidx.compose.animation.AnimatedVisibility(
                                     visible = showSeekIndicator == SeekDirection.BACKWARD,
                                     enter = fadeIn(),
                                     exit = fadeOut()
@@ -329,7 +329,7 @@ fun PlayerScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 // 快进指示器
-                                AnimatedVisibility(
+                                androidx.compose.animation.AnimatedVisibility(
                                     visible = showSeekIndicator == SeekDirection.FORWARD,
                                     enter = fadeIn(),
                                     exit = fadeOut()
@@ -340,7 +340,7 @@ fun PlayerScreen(
                         }
                         
                         // 长按3倍速提示
-                        AnimatedVisibility(
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = isLongPressing,
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
