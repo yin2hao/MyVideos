@@ -1,7 +1,11 @@
 package com.yin2hao.myvideos.ui.screens
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -120,6 +124,9 @@ fun PlayerScreen(
         }
     }
     
+    // 外置播放器菜单状态
+    var showExternalPlayerMenu by remember { mutableStateOf(false) }
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -127,6 +134,62 @@ fun PlayerScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    // 外置播放器按钮
+                    Box {
+                        IconButton(
+                            onClick = { showExternalPlayerMenu = true },
+                            enabled = proxyUrl != null
+                        ) {
+                            Icon(
+                                Icons.Default.OpenInNew,
+                                contentDescription = "使用外部播放器"
+                            )
+                        }
+                        
+                        DropdownMenu(
+                            expanded = showExternalPlayerMenu,
+                            onDismissRequest = { showExternalPlayerMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("使用其他应用打开") },
+                                onClick = {
+                                    showExternalPlayerMenu = false
+                                    proxyUrl?.let { url ->
+                                        openWithExternalPlayer(context, url, video.title)
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.OpenInNew, contentDescription = null)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("选择视频播放器") },
+                                onClick = {
+                                    showExternalPlayerMenu = false
+                                    proxyUrl?.let { url ->
+                                        openWithVideoPlayer(context, url, video.title)
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.VideoLibrary, contentDescription = null)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("复制播放链接") },
+                                onClick = {
+                                    showExternalPlayerMenu = false
+                                    proxyUrl?.let { url ->
+                                        copyToClipboard(context, url)
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                                }
+                            )
+                        }
                     }
                 }
             )
@@ -534,4 +597,57 @@ private fun formatSize(size: Long): String {
         size < 1024 * 1024 * 1024 -> String.format("%.1f MB", size / (1024.0 * 1024))
         else -> String.format("%.2f GB", size / (1024.0 * 1024 * 1024))
     }
+}
+
+/**
+ * 使用外部应用打开视频
+ */
+private fun openWithExternalPlayer(context: android.content.Context, url: String, title: String) {
+    try {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(Uri.parse(url), "video/*")
+            putExtra(Intent.EXTRA_TITLE, title)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        // 显示应用选择器
+        val chooser = Intent.createChooser(intent, "选择播放器")
+        context.startActivity(chooser)
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "未找到可用的视频播放器", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "无法打开外部播放器: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * 使用视频播放器打开（更精确的 MIME 类型）
+ */
+private fun openWithVideoPlayer(context: android.content.Context, url: String, title: String) {
+    try {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(Uri.parse(url), "video/mp4")
+            putExtra(Intent.EXTRA_TITLE, title)
+            // 一些播放器支持的额外参数
+            putExtra("title", title)
+            putExtra("position", 0)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        // 如果没有找到视频播放器，尝试使用通用方式
+        openWithExternalPlayer(context, url, title)
+    } catch (e: Exception) {
+        Toast.makeText(context, "无法打开视频播放器: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * 复制链接到剪贴板
+ */
+private fun copyToClipboard(context: android.content.Context, url: String) {
+    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    val clip = android.content.ClipData.newPlainText("视频链接", url)
+    clipboard.setPrimaryClip(clip)
+    Toast.makeText(context, "链接已复制到剪贴板", Toast.LENGTH_SHORT).show()
 }
