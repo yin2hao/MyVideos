@@ -47,7 +47,9 @@ import kotlinx.coroutines.delay
 fun PlayerScreen(
     video: VideoItem,
     onNavigateBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isInPipMode: Boolean = false,
+    onEnterPip: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val viewModel: PlayerViewModel = viewModel(
@@ -127,6 +129,34 @@ fun PlayerScreen(
     // 外置播放器菜单状态
     var showExternalPlayerMenu by remember { mutableStateOf(false) }
     
+    // PiP 模式下只显示播放器
+    if (isInPipMode) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            if (proxyUrl != null) {
+                AndroidView(
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            player = exoPlayer
+                            layoutParams = FrameLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            useController = false  // PiP 模式下隐藏控制器
+                            setShowNextButton(false)
+                            setShowPreviousButton(false)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+        return
+    }
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -137,6 +167,17 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
+                    // 画中画按钮
+                    IconButton(
+                        onClick = onEnterPip,
+                        enabled = proxyUrl != null
+                    ) {
+                        Icon(
+                            Icons.Default.PictureInPictureAlt,
+                            contentDescription = "画中画"
+                        )
+                    }
+                    
                     // 外置播放器按钮
                     Box {
                         IconButton(

@@ -1,6 +1,10 @@
 package com.yin2hao.myvideos
 
+import android.app.PictureInPictureParams
+import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -28,29 +32,79 @@ import com.yin2hao.myvideos.ui.screens.VideosScreen
 import com.yin2hao.myvideos.ui.theme.MyVideosTheme
 
 class MainActivity : ComponentActivity() {
+    
+    // PiP 状态
+    private var isInPipMode = mutableStateOf(false)
+    private var isPlayingVideo = mutableStateOf(false)
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val settingsRepository = SettingsRepository(this)
         enableEdgeToEdge()
         setContent {
             val settings by settingsRepository.settingsFlow.collectAsState(initial = Settings())
+            val inPipMode by isInPipMode
+            
             MyVideosTheme(dynamicColor = settings.dynamicColor) {
-                MyVideosApp()
+                MyVideosApp(
+                    isInPipMode = inPipMode,
+                    onEnterPip = { enterPipMode() },
+                    onVideoPlayingChanged = { isPlaying -> isPlayingVideo.value = isPlaying }
+                )
             }
         }
+    }
+    
+    /**
+     * 进入画中画模式
+     */
+    fun enterPipMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val params = PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(16, 9))
+                .build()
+            enterPictureInPictureMode(params)
+        }
+    }
+    
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // 当用户按下 Home 键时，如果正在播放视频，自动进入 PiP 模式
+        if (isPlayingVideo.value && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            enterPipMode()
+        }
+    }
+    
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPipMode.value = isInPictureInPictureMode
     }
 }
 
 @Composable
-fun MyVideosApp() {
+fun MyVideosApp(
+    isInPipMode: Boolean = false,
+    onEnterPip: () -> Unit = {},
+    onVideoPlayingChanged: (Boolean) -> Unit = {}
+) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.VIDEOS) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
+    
+    // 通知是否在播放视频
+    LaunchedEffect(selectedVideo) {
+        onVideoPlayingChanged(selectedVideo != null)
+    }
     
     // 如果有选中的视频，显示播放页面
     if (selectedVideo != null) {
         PlayerScreen(
             video = selectedVideo!!,
-            onNavigateBack = { selectedVideo = null }
+            onNavigateBack = { selectedVideo = null },
+            isInPipMode = isInPipMode,
+            onEnterPip = onEnterPip
         )
     } else {
         // 否则显示主界面
