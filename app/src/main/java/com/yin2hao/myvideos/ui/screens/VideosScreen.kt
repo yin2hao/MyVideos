@@ -1,10 +1,12 @@
 package com.yin2hao.myvideos.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -41,6 +43,9 @@ fun VideosScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val settingsValid by viewModel.settingsValid.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val selectedTag by viewModel.selectedTag.collectAsState()
+    val allTags by viewModel.allTags.collectAsState()
     
     LaunchedEffect(Unit) {
         viewModel.loadVideos()
@@ -159,6 +164,60 @@ fun VideosScreen(
             else -> {
                 // 视频列表
                 Column(modifier = Modifier.fillMaxSize()) {
+                    // 搜索框
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { viewModel.updateSearchQuery(it) },
+                        placeholder = { Text("搜索视频标题或描述...") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = "搜索")
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "清除")
+                                }
+                            }
+                        }
+                    )
+                    
+                    // 标签筛选栏
+                    if (allTags.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // "全部" 标签
+                            FilterChip(
+                                onClick = { viewModel.selectTag(null) },
+                                label = { Text("全部") },
+                                selected = selectedTag == null,
+                                leadingIcon = if (selectedTag == null) {
+                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                                } else null
+                            )
+                            
+                            // 其他标签
+                            allTags.forEach { tag ->
+                                FilterChip(
+                                    onClick = { viewModel.selectTag(tag) },
+                                    label = { Text(tag) },
+                                    selected = selectedTag == tag,
+                                    leadingIcon = if (selectedTag == tag) {
+                                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                                    } else null
+                                )
+                            }
+                        }
+                    }
+                    
                     // 顶部工具栏
                     Row(
                         modifier = Modifier
@@ -303,6 +362,36 @@ private fun VideoCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+                
+                // 显示标签
+                if (video.tags.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        video.tags.take(3).forEach { tag ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = tag,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                        if (video.tags.size > 3) {
+                            Text(
+                                text = "+${video.tags.size - 3}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }

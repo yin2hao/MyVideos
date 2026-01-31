@@ -17,7 +17,8 @@ data class VideoItem(
     val hasCover: Boolean = false,
     val originalFileSize: Long = 0,
     val createdAt: Long = 0,
-    val isStream: Boolean = false  // true=流式加密(CTR), false=分块加密(GCM)
+    val isStream: Boolean = false,  // true=流式加密(CTR), false=分块加密(GCM)
+    val tags: List<String> = emptyList()  // 视频标签
 ) {
     fun getDurationFormatted(): String {
         val totalSeconds = durationMs / 1000

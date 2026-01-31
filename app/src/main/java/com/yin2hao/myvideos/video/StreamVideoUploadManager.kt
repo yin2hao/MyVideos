@@ -46,6 +46,7 @@ class StreamVideoUploadManager(
      * @param videoUri 视频文件URI
      * @param title 视频标题
      * @param description 视频描述
+     * @param tags 视频标签
      * @param masterPassword 主密码
      * @param basePath WebDAV基础路径
      * @param onExtractCover 提取封面的回调
@@ -54,6 +55,7 @@ class StreamVideoUploadManager(
         videoUri: Uri,
         title: String,
         description: String,
+        tags: List<String> = emptyList(),
         masterPassword: String,
         basePath: String,
         onExtractCover: suspend (Uri) -> ByteArray?
@@ -203,6 +205,7 @@ class StreamVideoUploadManager(
                 videoId = videoId,
                 title = title,
                 description = description,
+                tags = tags,
                 fileSize = actualFileSize,
                 mimeType = mimeType,
                 hasCover = hasCover,
@@ -239,6 +242,7 @@ class StreamVideoUploadManager(
         videoId: String,
         title: String,
         description: String,
+        tags: List<String>,
         fileSize: Long,
         mimeType: String,
         hasCover: Boolean,
@@ -276,7 +280,8 @@ class StreamVideoUploadManager(
             createdAt = System.currentTimeMillis(),
             hasCover = hasCover,
             mimeType = mimeType,
-            isStream = isStream
+            isStream = isStream,
+            tags = tags
         )
         
         existingVideos.add(0, newEntry)

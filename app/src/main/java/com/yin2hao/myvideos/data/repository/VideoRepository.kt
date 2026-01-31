@@ -82,7 +82,8 @@ class VideoRepository(
                     hasCover = entry.hasCover,
                     originalFileSize = entry.originalFileSize,
                     createdAt = entry.createdAt,
-                    isStream = entry.isStream
+                    isStream = entry.isStream,
+                    tags = entry.tags
                 )
             }
             

@@ -36,6 +36,12 @@ class UploadViewModel(
     private val _description = MutableStateFlow("")
     val description: StateFlow<String> = _description
     
+    private val _tags = MutableStateFlow<List<String>>(emptyList())
+    val tags: StateFlow<List<String>> = _tags
+    
+    private val _tagInput = MutableStateFlow("")
+    val tagInput: StateFlow<String> = _tagInput
+    
     private val _uploadState = MutableStateFlow<UploadState>(UploadState.Idle)
     val uploadState: StateFlow<UploadState> = _uploadState
     
@@ -77,6 +83,22 @@ class UploadViewModel(
     
     fun updateDescription(description: String) {
         _description.value = description
+    }
+    
+    fun updateTagInput(input: String) {
+        _tagInput.value = input
+    }
+    
+    fun addTag(tag: String) {
+        val trimmedTag = tag.trim()
+        if (trimmedTag.isNotBlank() && !_tags.value.contains(trimmedTag)) {
+            _tags.value = _tags.value + trimmedTag
+        }
+        _tagInput.value = ""
+    }
+    
+    fun removeTag(tag: String) {
+        _tags.value = _tags.value.filter { it != tag }
     }
     
     /**
@@ -129,6 +151,7 @@ class UploadViewModel(
             videoUri = uri,
             title = videoTitle,
             description = _description.value,
+            tags = _tags.value,
             masterPassword = settings.masterPassword,
             basePath = settings.remoteBasePath,
             onExtractCover = { videoUri ->
@@ -155,6 +178,8 @@ class UploadViewModel(
         _videoInfo.value = null
         _title.value = ""
         _description.value = ""
+        _tags.value = emptyList()
+        _tagInput.value = ""
         _uploadState.value = UploadState.Idle
         _resultConsumed.value = false
     }

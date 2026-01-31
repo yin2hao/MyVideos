@@ -10,6 +10,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,6 +47,8 @@ fun UploadScreen(
     val videoInfo by viewModel.videoInfo.collectAsState()
     val title by viewModel.title.collectAsState()
     val description by viewModel.description.collectAsState()
+    val tags by viewModel.tags.collectAsState()
+    val tagInput by viewModel.tagInput.collectAsState()
     val uploadState by viewModel.uploadState.collectAsState()
     val settingsValid by viewModel.settingsValid.collectAsState()
     val resultConsumed by viewModel.resultConsumed.collectAsState()
@@ -231,6 +236,69 @@ fun UploadScreen(
                     maxLines = 5,
                     enabled = uploadState is UploadState.Idle || uploadState is UploadState.Success || uploadState is UploadState.Error
                 )
+                
+                // 标签输入
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = tagInput,
+                            onValueChange = { viewModel.updateTagInput(it) },
+                            label = { Text("添加标签") },
+                            placeholder = { Text("输入标签后按回车") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            enabled = uploadState is UploadState.Idle || uploadState is UploadState.Success || uploadState is UploadState.Error,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    if (tagInput.isNotBlank()) {
+                                        viewModel.addTag(tagInput)
+                                    }
+                                }
+                            ),
+                            trailingIcon = {
+                                if (tagInput.isNotBlank()) {
+                                    IconButton(onClick = { viewModel.addTag(tagInput) }) {
+                                        Icon(Icons.Default.Add, contentDescription = "添加标签")
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    
+                    // 已添加的标签列表
+                    if (tags.isNotEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            tags.forEach { tag ->
+                                InputChip(
+                                    onClick = { },
+                                    label = { Text(tag) },
+                                    selected = false,
+                                    trailingIcon = {
+                                        IconButton(
+                                            onClick = { viewModel.removeTag(tag) },
+                                            modifier = Modifier.size(18.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "移除标签",
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
         
