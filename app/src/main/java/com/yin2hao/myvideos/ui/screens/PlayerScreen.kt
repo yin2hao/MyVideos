@@ -38,9 +38,11 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.yin2hao.myvideos.data.model.VideoItem
+import com.yin2hao.myvideos.data.repository.VideoCacheRepository
 import com.yin2hao.myvideos.ui.viewmodel.PlayerViewModel
 import com.yin2hao.myvideos.ui.viewmodel.PlayerViewModelFactory
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, UnstableApi::class)
 @Composable
@@ -59,6 +61,18 @@ fun PlayerScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val proxyUrl by viewModel.proxyUrl.collectAsState()
+    
+    // 缓存功能
+    val cacheRepository = remember { VideoCacheRepository(context) }
+    val scope = rememberCoroutineScope()
+    var isCached by remember { mutableStateOf(false) }
+    var isCaching by remember { mutableStateOf(false) }
+    val downloadProgress by cacheRepository.downloadProgress.collectAsState()
+    
+    // 检查是否已缓存
+    LaunchedEffect(video.videoId) {
+        isCached = cacheRepository.isVideoCached(video.videoId)
+    }
     
     // 初始化播放
     LaunchedEffect(video) {
@@ -489,6 +503,81 @@ fun PlayerScreen(
                                     }
                                 }
                             )
+                        }
+                    }
+                }
+            }
+            
+            // 缓存按钮
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "离线缓存",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                
+                when {
+                    isCached -> {
+                        OutlinedButton(
+                            onClick = { },
+                            enabled = false,
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                disabledContainerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                            )
+                        ) {
+                            Icon(
+                                Icons.Default.DownloadDone,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("已缓存", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    isCaching || downloadProgress != null -> {
+                        OutlinedButton(
+                            onClick = { },
+                            enabled = false
+                        ) {
+                            val progress = downloadProgress?.progress ?: 0f
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                progress = { progress }
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("${(progress * 100).toInt()}%")
+                        }
+                    }
+                    else -> {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    isCaching = true
+                                    val result = cacheRepository.cacheVideo(video, viewModel.getSettings())
+                                    if (result.isSuccess) {
+                                        isCached = true
+                                        Toast.makeText(context, "视频已缓存", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "缓存失败: ${result.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                    isCaching = false
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("缓存到本地")
                         }
                     }
                 }

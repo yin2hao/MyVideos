@@ -25,6 +25,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.yin2hao.myvideos.data.model.Settings
 import com.yin2hao.myvideos.data.repository.SettingsRepository
 import com.yin2hao.myvideos.data.model.VideoItem
+import com.yin2hao.myvideos.ui.screens.CachedVideoPlayerScreen
+import com.yin2hao.myvideos.ui.screens.CachedVideosScreen
 import com.yin2hao.myvideos.ui.screens.PlayerScreen
 import com.yin2hao.myvideos.ui.screens.SettingsScreen
 import com.yin2hao.myvideos.ui.screens.UploadScreen
@@ -92,58 +94,91 @@ fun MyVideosApp(
 ) {
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.VIDEOS) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
+    var showCachedVideos by remember { mutableStateOf(false) }
+    
+    // 用于播放缓存视频的本地路径和标题
+    var cachedVideoPath by remember { mutableStateOf<String?>(null) }
+    var cachedVideoTitle by remember { mutableStateOf<String?>(null) }
     
     // 通知是否在播放视频
-    LaunchedEffect(selectedVideo) {
-        onVideoPlayingChanged(selectedVideo != null)
+    LaunchedEffect(selectedVideo, cachedVideoPath) {
+        onVideoPlayingChanged(selectedVideo != null || cachedVideoPath != null)
     }
     
     // 如果有选中的视频，显示播放页面
-    if (selectedVideo != null) {
-        PlayerScreen(
-            video = selectedVideo!!,
-            onNavigateBack = { selectedVideo = null },
-            isInPipMode = isInPipMode,
-            onEnterPip = onEnterPip
-        )
-    } else {
-        // 否则显示主界面
-        NavigationSuiteScaffold(
-            navigationSuiteItems = {
-                AppDestinations.entries.forEach {
-                    item(
-                        icon = {
-                            Icon(
-                                it.icon,
-                                contentDescription = it.label
-                            )
-                        },
-                        label = { Text(it.label) },
-                        selected = it == currentDestination,
-                        onClick = { currentDestination = it }
-                    )
+    when {
+        selectedVideo != null -> {
+            PlayerScreen(
+                video = selectedVideo!!,
+                onNavigateBack = { selectedVideo = null },
+                isInPipMode = isInPipMode,
+                onEnterPip = onEnterPip
+            )
+        }
+        cachedVideoPath != null -> {
+            // 播放缓存视频（直接使用本地文件）
+            CachedVideoPlayerScreen(
+                localPath = cachedVideoPath!!,
+                title = cachedVideoTitle ?: "缓存视频",
+                onNavigateBack = {
+                    cachedVideoPath = null
+                    cachedVideoTitle = null
+                },
+                isInPipMode = isInPipMode,
+                onEnterPip = onEnterPip
+            )
+        }
+        showCachedVideos -> {
+            CachedVideosScreen(
+                onNavigateBack = { showCachedVideos = false },
+                onPlayCachedVideo = { path, title ->
+                    cachedVideoPath = path
+                    cachedVideoTitle = title
                 }
-            }
-        ) {
-            Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                when (currentDestination) {
-                    AppDestinations.VIDEOS -> {
-                        VideosScreen(
-                            onVideoClick = { video ->
-                                selectedVideo = video
+            )
+        }
+        else -> {
+            // 否则显示主界面
+            NavigationSuiteScaffold(
+                navigationSuiteItems = {
+                    AppDestinations.entries.forEach {
+                        item(
+                            icon = {
+                                Icon(
+                                    it.icon,
+                                    contentDescription = it.label
+                                )
                             },
-                            modifier = Modifier.padding(innerPadding)
+                            label = { Text(it.label) },
+                            selected = it == currentDestination,
+                            onClick = { currentDestination = it }
                         )
                     }
-                    AppDestinations.UPLOAD -> {
-                        UploadScreen(
-                            modifier = Modifier.padding(innerPadding)
-                        )
-                    }
-                    AppDestinations.SETTINGS -> {
-                        SettingsScreen(
-                            modifier = Modifier.padding(innerPadding)
-                        )
+                }
+            ) {
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    when (currentDestination) {
+                        AppDestinations.VIDEOS -> {
+                            VideosScreen(
+                                onVideoClick = { video ->
+                                    selectedVideo = video
+                                },
+                                onNavigateToCachedVideos = {
+                                    showCachedVideos = true
+                                },
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+                        AppDestinations.UPLOAD -> {
+                            UploadScreen(
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
+                        AppDestinations.SETTINGS -> {
+                            SettingsScreen(
+                                modifier = Modifier.padding(innerPadding)
+                            )
+                        }
                     }
                 }
             }

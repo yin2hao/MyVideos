@@ -32,6 +32,7 @@ import java.io.File
 @Composable
 fun VideosScreen(
     onVideoClick: (VideoItem) -> Unit,
+    onNavigateToCachedVideos: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -46,6 +47,8 @@ fun VideosScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedTag by viewModel.selectedTag.collectAsState()
     val allTags by viewModel.allTags.collectAsState()
+    
+    var showMenu by remember { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
         viewModel.loadVideos()
@@ -231,8 +234,30 @@ fun VideosScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        IconButton(onClick = { viewModel.loadVideos() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                        Row {
+                            Box {
+                                IconButton(onClick = { showMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "更多")
+                                }
+                                DropdownMenu(
+                                    expanded = showMenu,
+                                    onDismissRequest = { showMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("已缓存视频") },
+                                        onClick = {
+                                            showMenu = false
+                                            onNavigateToCachedVideos()
+                                        },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.DownloadDone, contentDescription = null)
+                                        }
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { viewModel.loadVideos() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                            }
                         }
                     }
                     

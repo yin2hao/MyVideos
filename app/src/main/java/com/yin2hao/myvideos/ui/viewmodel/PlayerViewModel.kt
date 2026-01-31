@@ -134,6 +134,13 @@ class PlayerViewModel(
         streamProxyServer?.clearCache()
     }
     
+    /**
+     * 获取当前设置（用于缓存功能）
+     */
+    suspend fun getSettings(): Settings {
+        return settingsRepository.settingsFlow.first()
+    }
+    
     override fun onCleared() {
         super.onCleared()
         cleanup()
